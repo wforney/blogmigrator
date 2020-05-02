@@ -1,23 +1,19 @@
-﻿using CookComputing.MetaWeblog;
-using System;
-using System.Collections.Generic;
-using System.Configuration;
-using System.Data;
-using System.Windows;
-
-namespace BlogMigrator
+﻿namespace BlogMigrator
 {
-	/// <summary>
-	/// Interaction logic for App.xaml
-	/// </summary>
-	public partial class App : Application
-	{       
-      public static BlogSource sourceBlog = new BlogSource();
-      public static BlogSource destBlog = new BlogSource();
-      public static BlogSource rewriteBlog = new BlogSource();
-      public static List<LogData> itemsToRewrite = new List<LogData>();
-      public static bool rewritePosts;
-      public static string rewriteMessage;
-      public static bool BatchMode;
-	}
+    using System.Collections.Generic;
+    using System.Windows;
+
+    /// <summary>
+    /// Interaction logic for App.xaml
+    /// </summary>
+    public partial class App : Application
+    {
+        public static bool BatchMode;
+        public static BlogSource destBlog = new BlogSource();
+        public static List<LogData> itemsToRewrite = new List<LogData>();
+        public static BlogSource rewriteBlog = new BlogSource();
+        public static string rewriteMessage;
+        public static bool rewritePosts;
+        public static BlogSource sourceBlog = new BlogSource();
+    }
 }

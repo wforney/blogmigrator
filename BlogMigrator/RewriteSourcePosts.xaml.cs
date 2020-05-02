@@ -1,230 +1,243 @@
-﻿using System;
-using System.ComponentModel;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-
-namespace BlogMigrator
+﻿namespace BlogMigrator
 {
-   /// <summary>
-   /// Interaction logic for RewriteSourcePosts.xaml
-   /// </summary>
-   public partial class RewriteSourcePosts : Window
-   {
-      public ObservableCollection<LogData> LogCollection =
-                           new ObservableCollection<LogData>();
+    using System;
+    using System.Collections.ObjectModel;
+    using System.ComponentModel;
+    using System.IO;
+    using System.Text;
+    using System.Windows;
+    using System.Windows.Controls;
 
-      BackgroundWorker rewriteWorker = new BackgroundWorker();
-      
-      public RewriteSourcePosts()
-      {
-         InitializeComponent();
+    /// <summary>
+    /// Interaction logic for RewriteSourcePosts.xaml
+    /// </summary>
+    public partial class RewriteSourcePosts : Window
+    {
+        /// <summary>
+        /// The log collection
+        /// </summary>
+        public ObservableCollection<LogData> LogCollection = new ObservableCollection<LogData>();
 
-         rewriteWorker.WorkerReportsProgress = true;
-         rewriteWorker.WorkerSupportsCancellation = true;
-         rewriteWorker.DoWork += rewriteWorker_DoWork;
-         rewriteWorker.ProgressChanged += rewriteWorker_ProgressChanged;
-         rewriteWorker.RunWorkerCompleted += rewriteWorker_RunWorkerCompleted;
-      }
+        private readonly BackgroundWorker rewriteWorker = new BackgroundWorker();
 
-      private void btnTestRewrite_Click(object sender, RoutedEventArgs e)
-      {
-         string status;
-         string serviceUrl = "";
-         Services myService = new Services();
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RewriteSourcePosts"/> class.
+        /// </summary>
+        public RewriteSourcePosts()
+        {
+            this.InitializeComponent();
 
-         if (cmbRewriteService.SelectedIndex > -1)
-         {
-            ComboBoxItem itemDest = (ComboBoxItem)cmbRewriteService.SelectedItem;
+            this.rewriteWorker.WorkerReportsProgress = true;
+            this.rewriteWorker.WorkerSupportsCancellation = true;
+            this.rewriteWorker.DoWork += this.RewriteWorkerDoWork;
+            this.rewriteWorker.ProgressChanged += this.RewriteWorkerProgressChanged;
+            this.rewriteWorker.RunWorkerCompleted += this.RewriteWorkerRunWorkerCompleted;
+        }
 
-            switch (itemDest.Tag.ToString())
+        /// <summary>
+        /// Updates the status TextBox.
+        /// </summary>
+        /// <param name="Message">The message to add.</param>
+        /// ///
+        /// <history>Sean Patterson 11/6/2010 [Created]</history>
+        public void UpdateStatusText(string message)
+        {
+            var ProgressText = new StringBuilder();
+            ProgressText.AppendLine(this.txtStatus.Text);
+            ProgressText.AppendLine(message);
+            this.txtStatus.Text = ProgressText.ToString();
+            this.txtStatus.ScrollToLine(this.txtStatus.LineCount - 1);
+        }
+
+        /// <summary>
+        /// Handles the Click event of the btnClose control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
+        private void CloseButtonClick(object sender, RoutedEventArgs e) => this.Close();
+
+        /// <summary>
+        /// Handles the Click event of the btnLoadLog control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
+        private void LoadLogButtonClick(object sender, RoutedEventArgs e)
+        {
+            if (File.Exists(this.txtRewriteFile.Text))
             {
-               case "SS":
-                  serviceUrl = "http://www.squarespace.com/process/service/PostInterceptor";
-                  break;
+                this.LogCollection.Clear();
 
-               case "WP":
-                  serviceUrl = txtRewriteBlogUrl.Text + "/xmlrpc.php";
-                  break;
+                using (var sr = new StreamReader(this.txtRewriteFile.Text))
+                {
+                    string line;
+                    // Read and display lines from the file until the end of the file is reached.
+                    var firstLine = true;
+                    while ((line = sr.ReadLine()) != null)
+                    {
+                        if (!firstLine)
+                        {
+                            var logValues = line.Split(char.Parse(","));
+                            var logItem = new LogData
+                              (Convert.ToInt32(logValues[0]), logValues[1],
+                               Convert.ToInt32(logValues[2]), logValues[3]);
+                            this.LogCollection.Add(logItem);
+                        }
+                        else
+                        {
+                            firstLine = false;
+                        }
+                    }
+                }
 
-               case "ASPNet":
-                  serviceUrl = "http://weblogs.asp.net/metablog.ashx";
-                  break;
+                this.lblEntriesCount.Content = $"[{this.LogCollection.Count} Total]";
+                this.lsvLogEntries.ItemsSource = this.LogCollection;
 
-               case "OTHER":
-                  serviceUrl = txtRewriteServiceUrl.Text;
-                  break;
+                if (this.LogCollection.Count > 0)
+                {
+                    this.btnRewrite.IsEnabled = true;
+                    this.btnSelectAllEntries.IsEnabled = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles the Click event of the btnRewrite control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
+        private void RewriteButtonClick(object sender, RoutedEventArgs e)
+        {
+            var myArgs = new WorkerArgs();
+
+            if (this.cmbRewriteService.SelectedIndex > -1)
+            {
+                var itemDest = (ComboBoxItem)this.cmbRewriteService.SelectedItem;
+
+                switch (itemDest.Tag.ToString())
+                {
+                    case "SS":
+                        App.rewriteBlog.serviceUrl = "http://www.squarespace.com/process/service/PostInterceptor";
+                        break;
+
+                    case "WP":
+                        App.rewriteBlog.serviceUrl = $"{this.txtRewriteBlogUrl.Text}/xmlrpc.php";
+                        break;
+
+                    case "ASPNet":
+                        App.rewriteBlog.serviceUrl = "http://weblogs.asp.net/metablog.ashx";
+                        break;
+
+                    case "OTHER":
+                        App.rewriteBlog.serviceUrl = this.txtRewriteServiceUrl.Text;
+                        break;
+                }
+
+                App.rewriteBlog.blogId = this.txtRewriteBlogId.Text;
+                App.rewriteBlog.rootUrl = this.txtRewriteBlogUrl.Text;
+                App.rewriteBlog.username = this.txtRewriteUser.Text;
+                App.rewriteBlog.password = this.txtRewritePassword.Text;
+                App.rewriteBlog.blogFile = this.txtRewriteFile.Text;
+
+                App.itemsToRewrite.Clear();
+                foreach (LogData logItem in this.lsvLogEntries.SelectedItems)
+                {
+                    App.itemsToRewrite.Add(logItem);
+                }
+
+                App.rewriteMessage = this.txtUpdateSource.Text;
+
+                myArgs.processToRun = "rewrite";
+                myArgs.status = "Starting rewrite process...";
+                this.rewriteWorker.RunWorkerAsync(myArgs);
+            }
+            else
+            {
+                MessageBox.Show("Please specify a service type.",
+                                "Rewrite Sources Error.",
+                                MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Handles the Click event of the btnRewriteFile control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
+        private void RewriteFileButtonClick(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                DefaultExt = ".csv",
+                Filter = "Import Log Files (.csv)|*.csv|All Files|*.*"
+            };
+
+            var result = dlg.ShowDialog();
+
+            if (result == true)
+            {
+                this.txtRewriteFile.Text = dlg.FileName;
+            }
+        }
+
+        /// <summary>
+        /// Handles the Click event of the btnRewriteHelp control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
+        private void RewriteHelpButtonClick(object sender, RoutedEventArgs e) => new ConnectionHelpWindow().Show();
+
+        /// <summary>
+        /// Selects all entries in the ListView.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
+        private void SelectAllEntriesButtonClick(object sender, RoutedEventArgs e) => this.lsvLogEntries.SelectAll();
+
+        /// <summary>
+        /// Handles the Click event of the btnTestRewrite control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RoutedEventArgs"/> instance containing the event data.</param>
+        private void TestRewriteButtonClick(object sender, RoutedEventArgs e)
+        {
+            string status;
+            if (this.cmbRewriteService.SelectedIndex > -1)
+            {
+                var itemDest = (ComboBoxItem)this.cmbRewriteService.SelectedItem;
+
+                var serviceUrl = string.Empty;
+                switch (itemDest.Tag.ToString())
+                {
+                    case "SS":
+                        serviceUrl = "http://www.squarespace.com/process/service/PostInterceptor";
+                        break;
+
+                    case "WP":
+                        serviceUrl = this.txtRewriteBlogUrl.Text + "/xmlrpc.php";
+                        break;
+
+                    case "ASPNet":
+                        serviceUrl = "http://weblogs.asp.net/metablog.ashx";
+                        break;
+
+                    case "OTHER":
+                        serviceUrl = this.txtRewriteServiceUrl.Text;
+                        break;
+                }
+
+                status = new Services().CheckServerStatus(
+                    serviceUrl, this.txtRewriteBlogId.Text, this.txtRewriteUser.Text, this.txtRewritePassword.Text);
+            }
+            else
+            {
+                status = "Connection failed. No service type specified.";
             }
 
-            status = myService.CheckServerStatus
-                               (serviceUrl, txtRewriteBlogId.Text,
-                                txtRewriteUser.Text, txtRewritePassword.Text);
-         }
-         else
-         {
-            status = "Connection failed. No service type specified.";
-         }
-
-         MessageBox.Show(status, "Test Destination Connection Result",
-                         MessageBoxButton.OK, MessageBoxImage.Information);  
-      }
-
-      private void btnRewriteHelp_Click(object sender, RoutedEventArgs e)
-      {
-         ConnectionHelpWindow helpWindow = new ConnectionHelpWindow();
-         helpWindow.Show();
-      }
-
-      private void btnRewriteFile_Click(object sender, RoutedEventArgs e)
-      {
-         Microsoft.Win32.OpenFileDialog dlg = new Microsoft.Win32.OpenFileDialog();
-         dlg.DefaultExt = ".csv";
-         dlg.Filter = "Import Log Files (.csv)|*.csv|All Files|*.*";
-
-         Nullable<bool> result = dlg.ShowDialog();
-
-         if (result == true)
-         {
-            txtRewriteFile.Text = dlg.FileName;
-         }
-      }
-
-      /// <summary>
-      /// Selects all entries in the ListView.
-      /// </summary>
-      /// <param name="sender"></param>
-      /// <param name="e"></param>
-      private void btnSelectAllEntries_Click(object sender, RoutedEventArgs e)
-      {
-         lsvLogEntries.SelectAll();
-      }
-
-      private void btnRewrite_Click(object sender, RoutedEventArgs e)
-      {
-         WorkerArgs myArgs = new WorkerArgs();
-         
-         if (cmbRewriteService.SelectedIndex > -1)
-         {
-            ComboBoxItem itemDest = (ComboBoxItem)cmbRewriteService.SelectedItem;
-
-            switch (itemDest.Tag.ToString())
-            {
-               case "SS":
-                  App.rewriteBlog.serviceUrl = "http://www.squarespace.com/process/service/PostInterceptor";
-                  break;
-
-               case "WP":
-                  App.rewriteBlog.serviceUrl = txtRewriteBlogUrl.Text + "/xmlrpc.php";
-                  break;
-
-               case "ASPNet":
-                  App.rewriteBlog.serviceUrl = "http://weblogs.asp.net/metablog.ashx";
-                  break;
-
-               case "OTHER":
-                  App.rewriteBlog.serviceUrl = txtRewriteServiceUrl.Text;
-                  break;
-            }
-
-            App.rewriteBlog.blogId = txtRewriteBlogId.Text;
-            App.rewriteBlog.rootUrl = txtRewriteBlogUrl.Text;
-            App.rewriteBlog.username = txtRewriteUser.Text;
-            App.rewriteBlog.password = txtRewritePassword.Text;
-            App.rewriteBlog.blogFile = txtRewriteFile.Text;
-
-            App.itemsToRewrite.Clear();
-            foreach (LogData logItem in lsvLogEntries.SelectedItems)
-            {
-               App.itemsToRewrite.Add(logItem);
-            }
-
-            App.rewriteMessage = txtUpdateSource.Text;
-
-            myArgs.processToRun = "rewrite";
-            myArgs.status = "Starting rewrite process...";
-            rewriteWorker.RunWorkerAsync(myArgs);
-         }
-         else
-         {
-            MessageBox.Show("Please specify a service type.", 
-                            "Rewrite Sources Error.",
-                            MessageBoxButton.OK, MessageBoxImage.Error);
-         }
-      }
-
-      private void btnLoadLog_Click(object sender, RoutedEventArgs e)
-      {
-         LogData logItem;
-         string[] logValues;
-         bool firstLine = true;
-
-         if(File.Exists(txtRewriteFile.Text) )
-         {
-            LogCollection.Clear();
-
-            using (StreamReader sr = new StreamReader(txtRewriteFile.Text))
-            {
-               string line;
-               // Read and display lines from the file until the end of 
-               // the file is reached.
-               while ((line = sr.ReadLine()) != null)
-               {
-                  if (!firstLine)
-                  {
-                     logValues = line.Split((Char.Parse(",")));
-                     logItem = new LogData
-                                   (Convert.ToInt32(logValues[0]), logValues[1],
-                                    Convert.ToInt32(logValues[2]), logValues[3]);
-                     LogCollection.Add(logItem);
-                  }
-                  else
-                  {
-                     firstLine = false;
-                  }
-               }
-            }
-
-            lblEntriesCount.Content = "[" + LogCollection.Count + " Total]";
-            lsvLogEntries.ItemsSource = LogCollection;
-
-            if (LogCollection.Count > 0)
-            {
-               btnRewrite.IsEnabled = true;
-               btnSelectAllEntries.IsEnabled = true;
-            }
-         }
-      }
-
-      private void btnClose_Click(object sender, RoutedEventArgs e)
-      {
-         this.Close();
-      }
-
-      /// <summary>
-      /// Updates the status TextBox.
-      /// </summary>
-      /// <param name="Message">The message to add.</param>
-      /// /// <history>
-      /// Sean Patterson    11/6/2010   [Created]
-      /// </history>
-      public void UpdateStatusText(string message)
-      {
-         StringBuilder ProgressText = new StringBuilder();
-         ProgressText.AppendLine(txtStatus.Text);
-         ProgressText.AppendLine(message);
-         txtStatus.Text = ProgressText.ToString();
-         txtStatus.ScrollToLine(txtStatus.LineCount - 1);
-      }
-   }
+            MessageBox.Show(
+                status,
+                "Test Destination Connection Result",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
 }

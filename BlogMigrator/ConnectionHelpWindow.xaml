@@ -51,6 +51,6 @@
             Still tracking down this info...
         </TextBlock>
         
-        <Button x:Name="btnClose" Click="btnClose_Click">Close</Button>
+        <Button x:Name="btnClose" Click="CloseButtonClick">Close</Button>
     </StackPanel>
 </Window>

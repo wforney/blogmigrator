@@ -1,281 +1,259 @@
-﻿using BlogML;
-using CookComputing.XmlRpc;
-using System;
-using System.ComponentModel;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Text;
-using System.Threading;
-using System.Xml;
-using System.Xml.Linq;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
-
-namespace BlogMigrator
+﻿namespace BlogMigrator
 {
-/// <summary>
-/// Interaction logic for MainWindow.xaml
-/// </summary>
-public partial class MainWindow : Window
-{
-      public ObservableCollection<PostData> PostCollection =
-                           new ObservableCollection<PostData>();
+    using CookComputing.XmlRpc;
 
-      BackgroundWorker allPostsWorker = new BackgroundWorker();
-      BackgroundWorker migrationWorker = new BackgroundWorker();
-        
-      public MainWindow()
-	{
-		this.InitializeComponent();
+    using System;
+    using System.Collections.ObjectModel;
+    using System.ComponentModel;
+    using System.Diagnostics.CodeAnalysis;
+    using System.Text;
+    using System.Windows;
 
-         allPostsWorker.WorkerReportsProgress = true;
-         allPostsWorker.WorkerSupportsCancellation = true;
-         allPostsWorker.DoWork += allPostsWorker_DoWork;
-         allPostsWorker.ProgressChanged += allPostsWorker_ProgressChanged;
-         allPostsWorker.RunWorkerCompleted += allPostsWorker_RunWorkerCompleted;
-            
-         migrationWorker.WorkerReportsProgress = true;
-         migrationWorker.WorkerSupportsCancellation = true;
-         migrationWorker.DoWork += migrationWorker_DoWork;
-         migrationWorker.ProgressChanged += migrationWorker_ProgressChanged;
-         migrationWorker.RunWorkerCompleted += migrationWorker_RunWorkerCompleted;
-	}
+    /// <summary>
+    /// Interaction logic for MainWindow.xaml
+    /// </summary>
+    public partial class MainWindow : Window
+    {
+        /// <summary>
+        /// The post collection
+        /// </summary>
+        public ObservableCollection<PostData> PostCollection = new ObservableCollection<PostData>();
 
-      /// <summary>
-      /// Exits the application.
-      /// </summary>
-      /// <param name="sender">Quit menu click event.</param>
-      /// <param name="e">Click event arguments.</param>
-      /// <history>
-      /// Sean Patterson    11/4/2010   [Created]
-      /// </history>
-      private void mnuFileQuit_Click(object sender, RoutedEventArgs e)
-      {
-         Application.Current.Shutdown();
-      }
+        private readonly BackgroundWorker allPostsWorker = new BackgroundWorker();
+        private readonly BackgroundWorker migrationWorker = new BackgroundWorker();
 
-      /// <summary>
-      /// Displays the about window.
-      /// </summary>
-      /// <param name="sender">About menu click event.</param>
-      /// <param name="e">Click event arguments.</param>
-      /// <history>
-      /// Sean Patterson    11/4/2010   [Created]
-      /// </history>
-      private void mnuHelpAbout_Click(object sender, RoutedEventArgs e)
-      {
-         AboutWindow about = new AboutWindow();
-         about.ShowDialog();
-      }
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MainWindow" /> class.
+        /// </summary>
+        public MainWindow()
+        {
+            this.InitializeComponent();
 
-      /// <summary>
-      /// Handles btnGetAllPosts click event.
-      /// </summary>
-      /// <param name="sender">Get All Posts button click event.</param>
-      /// <param name="e">Click event arguments.</param>
-      /// <history>
-      /// Sean Patterson    11/4/2010   [Created]
-      /// </history>
-      private void btnGetAllPosts_Click(object sender, RoutedEventArgs e)
-      {
-         WorkerArgs myArgs = new WorkerArgs();
-         myArgs.processToRun = "getallposts";
-         myArgs.status = "Get all posts action selected.";
-                
-         try
-         {
-               allPostsWorker.RunWorkerAsync(myArgs);                                
-         }
-         catch (XmlRpcFaultException fex)
-         {
-               // Flush out old records to prevent accidental writes.
-               if (App.sourceBlog.blogPosts.Count > 0)
-               {
-                  App.sourceBlog.blogPosts.Clear();
-               }
+            this.allPostsWorker.WorkerReportsProgress = true;
+            this.allPostsWorker.WorkerSupportsCancellation = true;
+            this.allPostsWorker.DoWork += this.AllPostsWorkerDoWork;
+            this.allPostsWorker.ProgressChanged += this.AllPostsWorkerProgressChanged;
+            this.allPostsWorker.RunWorkerCompleted += this.AllPostsWorkerRunWorkerCompleted;
 
-               App.sourceBlog.blogData = null;
+            this.migrationWorker.WorkerReportsProgress = true;
+            this.migrationWorker.WorkerSupportsCancellation = true;
+            this.migrationWorker.DoWork += this.MigrationWorkerDoWork;
+            this.migrationWorker.ProgressChanged += this.MigrationWorkerProgressChanged;
+            this.migrationWorker.RunWorkerCompleted += this.MigrationWorkerRunWorkerCompleted;
+        }
 
-               if (PostCollection.Count > 0)
-               {
-                  PostCollection.Clear();
-               }
-                                
-               lblEntriesCount.Content = "[0 Total]";
+        /// <summary>
+        /// Updates the status bar.
+        /// </summary>
+        /// <param name="Message">The message to add.</param>
+        /// ///
+        /// <history>Sean Patterson 11/6/2010 [Created]</history>
+        public void UpdateStatusBar(string message) => this.StatusBarMessage.Content = message;
 
-               MessageBox.Show("XML-RPC error migrating posts: " +
-                              Environment.NewLine + Environment.NewLine +
-                              fex.ToString() + "Please check your settings and " +
-                              "try again.", "Migration Result",
-                              MessageBoxButton.OK, MessageBoxImage.Error);
-         }
-         catch (Exception ex)
-         {
-               // Flush out old records to prevent accidental writes.
-               if (App.sourceBlog.blogPosts.Count > 0)
-               {
-                  App.sourceBlog.blogPosts.Clear();
-               }
+        /// <summary>
+        /// Updates the status TextBox.
+        /// </summary>
+        /// <param name="Message">The message to add.</param>
+        /// ///
+        /// <history>Sean Patterson 11/6/2010 [Created]</history>
+        public void UpdateStatusText(string message)
+        {
+            var ProgressText = new StringBuilder();
+            ProgressText.AppendLine(this.txtStatus.Text);
+            ProgressText.AppendLine(message);
+            this.txtStatus.Text = ProgressText.ToString();
+            this.txtStatus.ScrollToLine(this.txtStatus.LineCount - 1);
+        }
 
-               App.sourceBlog.blogData = null;
-
-               if (PostCollection.Count > 0)
-               {
-                  PostCollection.Clear();
-               }
-
-               lblEntriesCount.Content = "[0 Total]";
-
-               MessageBox.Show("General error migrating posts: " +
-                              Environment.NewLine + Environment.NewLine +
-                              ex.ToString() + "Please check your settings and " +
-                              "try again.", "Migration Result",
-                              MessageBoxButton.OK, MessageBoxImage.Information);
-         }                                    
-      }               
-
-      /// <summary>
-      /// Migrates the posts from the source to destination server.
-      /// </summary>
-      /// <param name="sender">Migrate button click event.</param>
-      /// <param name="e">Button click event arguments.</param>
-      /// <history>
-      /// Sean Patterson    11/4/2010   [Created]
-      /// </history>
-      private void btnMigrate_Click(object sender, RoutedEventArgs e)
-      {
-         WorkerArgs myArgs = new WorkerArgs();
-         myArgs.processToRun = "migrateposts";
-         myArgs.status = "Migrate posts action selected.";
-
-         try
-         {
-            App.sourceBlog.postsToMigrate.Clear();
-            
-            foreach (PostData item in lsvAllPosts.SelectedItems)
+        /// <summary>
+        /// Displays the configure destination window.
+        /// </summary>
+        /// <param name="sender">Configure source button click event.</param>
+        /// <param name="e">Button click event arguments.</param>
+        /// <history>Sean Patterson [11/11/2010] Created</history>
+        private void ConfigureDestinationButtonClick(object sender, RoutedEventArgs e) =>
+            new ConfigureDestination
             {
-               App.sourceBlog.postsToMigrate.Add(item.postid);
-            }
+                Owner = this
+            }.ShowDialog();
 
-            if (chkUpdateSource.IsChecked == true)
+        /// <summary>
+        /// Displays the configure source window.
+        /// </summary>
+        /// <param name="sender">Configure source button click event.</param>
+        /// <param name="e">Button click event arguments.</param>
+        /// <history>Sean Patterson [11/11/2010] Created</history>
+        private void ConfigureSourceButtonClick(object sender, RoutedEventArgs e) =>
+            new ConfigureSource
             {
-               App.rewritePosts = true;
-               App.rewriteMessage = txtUpdateSource.Text;
-            }
-            else
+                Owner = this
+            }.ShowDialog();
+
+        /// <summary>
+        /// Exits the application.
+        /// </summary>
+        /// <param name="sender">Quit menu click event.</param>
+        /// <param name="e">Click event arguments.</param>
+        /// <history>Sean Patterson 11/4/2010 [Created]</history>
+        private void FileQuitMenuClick(object sender, RoutedEventArgs e) => Application.Current.Shutdown();
+
+        /// <summary>
+        /// Handles btnGetAllPosts click event.
+        /// </summary>
+        /// <param name="sender">Get All Posts button click event.</param>
+        /// <param name="e">Click event arguments.</param>
+        /// <history>Sean Patterson 11/4/2010 [Created]</history>
+        [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "<Pending>")]
+        private void GetAllPostsButtonClick(object sender, RoutedEventArgs e)
+        {
+            var myArgs = new WorkerArgs
             {
-               App.rewritePosts = false;
-               App.rewriteMessage = null;
-            }
-             App.BatchMode = IsBatch.IsChecked.Value; 
-            if (App.sourceBlog.postsToMigrate.Count > 0)
+                processToRun = "getallposts",
+                status = "Get all posts action selected."
+            };
+
+            try
             {
-               migrationWorker.RunWorkerAsync(myArgs);
+                this.allPostsWorker.RunWorkerAsync(myArgs);
             }
-            else
+            catch (XmlRpcFaultException fex)
             {
-               MessageBox.Show("Please specify at least one post to migrate.", 
-                               "No Posts Specified.", MessageBoxButton.OK, 
-                               MessageBoxImage.Exclamation);
+                // Flush out old records to prevent accidental writes.
+                if (App.sourceBlog.blogPosts.Count > 0)
+                {
+                    App.sourceBlog.blogPosts.Clear();
+                }
+
+                App.sourceBlog.blogData = null;
+
+                if (this.PostCollection.Count > 0)
+                {
+                    this.PostCollection.Clear();
+                }
+
+                this.lblEntriesCount.Content = "[0 Total]";
+
+                MessageBox.Show(
+                    $"XML-RPC error migrating posts: {Environment.NewLine}{Environment.NewLine}{fex}Please check your settings and try again.",
+                    "Migration Result",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
             }
-         }
-         catch (XmlRpcFaultException fex)
-         {
-               MessageBox.Show("XML-RPC error migrating posts: " +
-                               Environment.NewLine + Environment.NewLine + 
-                               fex.ToString() + "Please check your settings and " +
-                               "try again.", "Migration Result", 
-                               MessageBoxButton.OK, MessageBoxImage.Information);
-         }
-         catch (Exception ex)
-         {
-            MessageBox.Show("General error migrating posts: " +
-                            Environment.NewLine + Environment.NewLine +
-                            ex.ToString() + "Please check your settings and " +
-                            "try again.", "Migration Result",
-                            MessageBoxButton.OK, MessageBoxImage.Information);
-         }
-      }
+            catch (Exception ex)
+            {
+                // Flush out old records to prevent accidental writes.
+                if (App.sourceBlog.blogPosts.Count > 0)
+                {
+                    App.sourceBlog.blogPosts.Clear();
+                }
 
-      /// <summary>
-      /// Updates the status TextBox.
-      /// </summary>
-      /// <param name="Message">The message to add.</param>
-      /// /// <history>
-      /// Sean Patterson    11/6/2010   [Created]
-      /// </history>
-      public void UpdateStatusText(string message)
-      {
-         StringBuilder ProgressText = new StringBuilder();
-         ProgressText.AppendLine(txtStatus.Text);
-         ProgressText.AppendLine(message);
-         txtStatus.Text = ProgressText.ToString();
-         txtStatus.ScrollToLine(txtStatus.LineCount - 1);
-      }
+                App.sourceBlog.blogData = null;
 
-      /// <summary>
-      /// Updates the status bar.
-      /// </summary>
-      /// <param name="Message">The message to add.</param>
-      /// /// <history>
-      /// Sean Patterson    11/6/2010   [Created]
-      /// </history>
-      public void UpdateStatusBar(string message)
-      {
-         StatusBarMessage.Content = message;
-      }
+                if (this.PostCollection.Count > 0)
+                {
+                    this.PostCollection.Clear();
+                }
 
-      /// <summary>
-      /// Displays the configure source window.
-      /// </summary>
-      /// <param name="sender">Configure source button click event.</param>
-      /// <param name="e">Button click event arguments.</param>
-      /// <history>
-      /// Sean Patterson   [11/11/2010]   Created
-      /// </history>
-      private void btnConfigureSource_Click(object sender, RoutedEventArgs e)
-      {
-         ConfigureSource configWindow = new ConfigureSource();
-         configWindow.Owner = this;
-         configWindow.ShowDialog();
-      }
+                this.lblEntriesCount.Content = "[0 Total]";
 
-      /// <summary>
-      /// Displays the configure destination window.
-      /// </summary>
-      /// <param name="sender">Configure source button click event.</param>
-      /// <param name="e">Button click event arguments.</param>
-      /// <history>
-      /// Sean Patterson   [11/11/2010]   Created
-      /// </history>
-      private void btnConfigureDestination_Click(object sender, RoutedEventArgs e)
-      {
-         ConfigureDestination configWindow = new ConfigureDestination();
-         configWindow.Owner = this;
-         configWindow.ShowDialog();
-      }
+                MessageBox.Show(
+                    $"General error migrating posts: {Environment.NewLine}{Environment.NewLine}{ex}Please check your settings and try again.",
+                    "Migration Result",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        }
 
-   /// <summary>
-   /// Selects all posts in the ListView
-   /// </summary>
-   /// <param name="sender"></param>
-   /// <param name="e"></param>
-   private void btnSelectAllPosts_Click(object sender, RoutedEventArgs e)
-   {
-      lsvAllPosts.SelectAll();
-   }
+        /// <summary>
+        /// Displays the about window.
+        /// </summary>
+        /// <param name="sender">About menu click event.</param>
+        /// <param name="e">Click event arguments.</param>
+        /// <history>Sean Patterson 11/4/2010 [Created]</history>
+        private void HelpAboutMenuClick(object sender, RoutedEventArgs e) => new AboutWindow().ShowDialog();
 
-   private void mnuToolsRewrite_Click(object sender, RoutedEventArgs e)
-   {
-      RewriteSourcePosts rewriteWindow = new RewriteSourcePosts();
-      rewriteWindow.Owner = this;
-      rewriteWindow.ShowDialog();
-   }        
-}
+        /// <summary>
+        /// Migrates the posts from the source to destination server.
+        /// </summary>
+        /// <param name="sender">Migrate button click event.</param>
+        /// <param name="e">Button click event arguments.</param>
+        /// <history>Sean Patterson 11/4/2010 [Created]</history>
+        [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "<Pending>")]
+        private void MigrateButtonClick(object sender, RoutedEventArgs e)
+        {
+            var myArgs = new WorkerArgs
+            {
+                processToRun = "migrateposts",
+                status = "Migrate posts action selected."
+            };
+
+            try
+            {
+                App.sourceBlog.postsToMigrate.Clear();
+
+                foreach (PostData item in this.lsvAllPosts.SelectedItems)
+                {
+                    App.sourceBlog.postsToMigrate.Add(item.postid);
+                }
+
+                if (this.chkUpdateSource.IsChecked == true)
+                {
+                    App.rewritePosts = true;
+                    App.rewriteMessage = this.txtUpdateSource.Text;
+                }
+                else
+                {
+                    App.rewritePosts = false;
+                    App.rewriteMessage = null;
+                }
+                App.BatchMode = this.IsBatch.IsChecked.Value;
+                if (App.sourceBlog.postsToMigrate.Count > 0)
+                {
+                    this.migrationWorker.RunWorkerAsync(myArgs);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        "Please specify at least one post to migrate.",
+                        "No Posts Specified.",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Exclamation);
+                }
+            }
+            catch (XmlRpcFaultException fex)
+            {
+                MessageBox.Show(
+                    $"XML-RPC error migrating posts: {Environment.NewLine}{Environment.NewLine}{fex}Please check your settings and try again.",
+                    "Migration Result",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"General error migrating posts: {Environment.NewLine}{Environment.NewLine}{ex}Please check your settings and try again.",
+                    "Migration Result",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        }
+
+        /// <summary>
+        /// Selects all posts in the ListView
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void SelectAllPostsButtonClick(object sender, RoutedEventArgs e) => this.lsvAllPosts.SelectAll();
+
+        /// <summary>
+        /// Handles the Click event of the mnuToolsRewrite control.
+        /// </summary>
+        /// <param name="sender">The source of the event.</param>
+        /// <param name="e">The <see cref="RoutedEventArgs" /> instance containing the event data.</param>
+        private void ToolsRewriteMenuClick(object sender, RoutedEventArgs e) =>
+                    new RewriteSourcePosts
+                    {
+                        Owner = this
+                    }.ShowDialog();
+    }
 }
